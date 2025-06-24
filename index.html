@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CPU-RAM Runner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'VT323', monospace;
+            background-color: #050510;
+            color: #00ff00;
+        }
+        .game-container {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 20px;
+            border: 2px solid #00ff00;
+            padding: 20px;
+            background: #111;
+            width: 100%;
+            max-width: 900px;
+            height: 500px;
+            border-radius: 10px;
+        }
+        .cpu-area, .ram-area {
+            border: 2px solid #00ff00;
+            padding: 15px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+        }
+        .cpu-area { background-color: #102010; }
+        .ram-area { background-color: #101020; }
+        .area-title {
+            font-size: 24px;
+            margin-bottom: 10px;
+            text-shadow: 0 0 5px #00ff00;
+            border-bottom: 1px solid #00ff00;
+            padding-bottom: 5px;
+        }
+        .ram-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            flex-grow: 1;
+        }
+        .ram-cell {
+            background: #222;
+            border: 1px solid #444;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .ram-cell:hover {
+            background: #00ff00;
+            color: #111;
+        }
+        .ram-address {
+            font-size: 16px;
+            color: #aaa;
+        }
+        .ram-value {
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .instruction-box {
+            background: #000;
+            padding: 10px;
+            border: 1px solid #00ff00;
+            margin-top: 10px;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        #instruction { font-size: 28px; }
+        #player-state { font-size: 22px; margin-top: 15px; color: #ffdd00; }
+        #timer-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #333;
+            border: 1px solid #00ff00;
+            margin-top: 10px;
+        }
+        #timer-fill {
+            width: 100%;
+            height: 100%;
+            background-color: #ff0000;
+            transition: width 0.1s linear;
+        }
+        .message-box {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0,20,0,0.9);
+            padding: 30px;
+            border-radius: 10px;
+            border: 2px solid #00ff00;
+            text-align: center;
+            z-index: 100;
+        }
+        .btn {
+            padding: 10px 20px;
+            font-size: 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            border: 2px solid #00ff00;
+            background-color: #111;
+            color: #00ff00;
+            transition: all 0.2s ease;
+            margin-top: 20px;
+        }
+        .btn:hover { background-color: #00ff00; color: #111; }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="text-center mb-4">
+        <h1 class="text-4xl">CPU-RAM Runner</h1>
+        <div class="text-xl">Nivel: <span id="level">1</span> | Puntuación: <span id="score">0</span></div>
+    </div>
+
+    <div id="game-container" class="game-container">
+        <!-- CPU Area -->
+        <div class="cpu-area">
+            <div class="area-title">CPU</div>
+            <div class="instruction-box">
+                <div>
+                    <div class="text-lg">INSTRUCCIÓN ACTUAL:</div>
+                    <div id="instruction">ESPERANDO...</div>
+                    <div id="player-state">ESTADO: INACTIVO</div>
+                </div>
+                <div>
+                    <div class="text-lg">TIEMPO RESTANTE:</div>
+                    <div id="timer-bar"><div id="timer-fill"></div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- RAM Area -->
+        <div class="ram-area">
+            <div class="area-title">RAM</div>
+            <div id="ram-grid" class="ram-grid"></div>
+        </div>
+    </div>
+
+    <!-- Popups -->
+    <div id="start-box" class="message-box">
+        <h2 class="text-3xl mb-4">Misión</h2>
+        <p class="mb-6 text-xl">
+            Eres el BUS de datos. <br>
+            La CPU te dará instrucciones. <br>
+            ¡Haz clic en la dirección de memoria correcta!
+        </p>
+        <button id="start-button" class="btn">INICIAR SISTEMA</button>
+    </div>
+    
+    <div id="feedback-box" class="message-box hidden">
+        <h2 id="feedback-title" class="text-3xl mb-4"></h2>
+        <p id="feedback-text" class="mb-6 text-xl"></p>
+        <button id="next-button" class="btn"></button>
+    </div>
+<audio id="sound-correct" src="https://freesound.org/data/previews/341/341695_6262081-lq.mp3"></audio>
+<audio id="sound-error" src="https://freesound.org/data/previews/198/198843_285997-lq.mp3"></audio>
+<audio id="sound-cpu" src="https://freesound.org/data/previews/198/198841_285997-lq.mp3"></audio>
+
+    <script>
+        
+    const levelEl = document.getElementById('level');
+    const scoreEl = document.getElementById('score');
+    const instructionEl = document.getElementById('instruction');
+    const playerStateEl = document.getElementById('player-state');
+    const ramGridEl = document.getElementById('ram-grid');
+    const timerFillEl = document.getElementById('timer-fill');
+    const startBox = document.getElementById('start-box');
+    const feedbackBox = document.getElementById('feedback-box');
+    const feedbackTitle = document.getElementById('feedback-title');
+    const feedbackText = document.getElementById('feedback-text');
+    const nextButton = document.getElementById('next-button');
+    const startButton = document.getElementById('start-button');
+
+    let level = 1;
+    let score = 0;
+    let ram = [];
+    let currentInstruction = {};
+    let playerHasData = false;
+    let gameActive = false;
+    let timerInterval;
+    let timeLeft = 100;
+
+    const STATE_MESSAGES = {
+        FETCH: 'BUSCAR DATO EN RAM',
+        RETURN: 'VOLVER A LA CPU',
+        IDLE: 'INACTIVO'
+    };
+
+    function populateRAM() {
+        ramGridEl.innerHTML = '';
+        ram = [];
+        for (let i = 0; i < 16; i++) {
+            const value = Math.floor(Math.random() * 90) + 10;
+            ram.push({ address: i, value });
+            const cell = document.createElement('div');
+            cell.classList.add('ram-cell');
+            cell.dataset.address = i;
+            cell.innerHTML = `
+                <div class="ram-address">0x${i.toString(16).padStart(2, '0').toUpperCase()}</div>
+                <div class="ram-value">${value}</div>
+            `;
+            cell.addEventListener('click', () => onRAMClick(i));
+            ramGridEl.appendChild(cell);
+        }
+    }
+
+    function onRAMClick(address) {
+        if (!gameActive || playerHasData || currentInstruction.type !== 'FETCH') return;
+
+        if (address === currentInstruction.address) {
+            score += 10;
+            updateScore();
+            playerHasData = true;
+            playerStateEl.textContent = `ESTADO: ${STATE_MESSAGES.RETURN} (DATO: ${currentInstruction.value})`;
+            const cpuArea = document.querySelector('.cpu-area');
+            cpuArea.style.cursor = 'pointer';
+            cpuArea.addEventListener('click', onCPUClick);
+        } else {
+            endGame(false, '¡Dirección incorrecta! Has causado un fallo de segmentación.');
+        }
+    }
+
+    function onCPUClick() {
+        if (!gameActive || !playerHasData) return;
+
+        if (currentInstruction.type === 'FETCH') {
+            score += 15;
+            updateScore();
+            playerHasData = false;
+            playerStateEl.textContent = `ESTADO: ${STATE_MESSAGES.IDLE}`;
+
+            const cpuArea = document.querySelector('.cpu-area');
+            cpuArea.style.cursor = 'default';
+            cpuArea.removeEventListener('click', onCPUClick);
+
+            clearInterval(timerInterval);
+
+            setTimeout(() => {
+                nextInstruction();
+            }, 500); // Pequeña pausa para mejorar flujo visual
+        }
+    }
+
+    function nextInstruction() {
+        timeLeft = 100;
+
+        if (ram.length < 16) populateRAM(); // Por si acaso no está cargada
+
+        let randomAddress = Math.floor(Math.random() * 16);
+
+        if (!ram[randomAddress]) {
+            populateRAM();
+            randomAddress = Math.floor(Math.random() * 16);
+        }
+
+        currentInstruction = {
+            type: 'FETCH',
+            address: randomAddress,
+            value: ram[randomAddress].value
+        };
+
+        instructionEl.textContent = `FETCH 0x${randomAddress.toString(16).padStart(2, '0').toUpperCase()}`;
+        playerStateEl.textContent = `ESTADO: ${STATE_MESSAGES.FETCH}`;
+        startTimer();
+    }
+
+    function startTimer() {
+        const timeLimit = Math.max(2000, 8000 - (level * 400)); // mínimo 2s
+        const startTime = Date.now();
+
+        timerInterval = setInterval(() => {
+            const elapsed = Date.now() - startTime;
+            timeLeft = 100 - (elapsed / timeLimit) * 100;
+            timerFillEl.style.width = timeLeft + '%';
+
+            if (timeLeft <= 0) {
+                endGame(false, '¡Tiempo agotado! La CPU no puede esperar tanto.');
+            }
+        }, 50);
+    }
+
+    function startGame() {
+        gameActive = true;
+        startBox.classList.add('hidden');
+        feedbackBox.classList.add('hidden');
+        populateRAM();
+        nextInstruction();
+    }
+
+    function endGame(isWin, message) {
+        gameActive = false;
+        clearInterval(timerInterval);
+
+        if (isWin) {
+            feedbackTitle.textContent = '¡NIVEL COMPLETADO!';
+            feedbackText.textContent = `Puntuación obtenida: ${score}. ¡Buen trabajo!`;
+            nextButton.textContent = 'SIGUIENTE NIVEL';
+            nextButton.onclick = () => {
+                level++;
+                updateLevel();
+                startGame();
+            };
+        } else {
+            feedbackTitle.textContent = '¡FALLO DEL SISTEMA!';
+            feedbackText.textContent = message;
+            nextButton.textContent = 'REINICIAR';
+            nextButton.onclick = () => {
+                score = 0;
+                level = 1;
+                updateScore();
+                updateLevel();
+                startGame();
+            };
+        }
+
+        feedbackBox.classList.remove('hidden');
+    }
+
+    function updateScore() { scoreEl.textContent = score; }
+    function updateLevel() { levelEl.textContent = level; }
+
+    // Iniciar juego
+    startButton.addEventListener('click', startGame);
+
+
+
+    </script>
+</body>
+</html>
